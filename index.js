@@ -4,10 +4,10 @@ const path = require('path');
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
     webPreferences: {
-      nodeIntegration: false,
+      nodeIntegration: true,
       contextIsolation: true, // Enable context isolation for security
       preload: path.join(__dirname, 'preload.js') // Use preload script
     },

@@ -26,3 +26,7 @@ pids
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# SQLite database files
+data/metrics.db
+*.db
