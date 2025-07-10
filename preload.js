@@ -476,10 +476,199 @@ async function fetchSupportedBlockchains() {
   }
 }
 
+/**
+ * Fetch blockchain list with creation dates from Glacier API
+ */
+async function glacierListBlockchains() {
+  try {
+    console.log('[Preload] Fetching blockchains from Glacier API...');
+    
+    const result = {
+      ok: true,
+      status: 200,
+      data: { blockchains: [] },
+      error: null
+    };
+    
+    // Set up headers with the API key
+    const headers = {
+      'x-glacier-api-key': 'ac_iqDte1gB5XmdqdtOWEvdzfu6p8K3X09z0jNWz0EpkZ8eFUQefL-3xXHRzaQARr92ckttFTzVpIecL0Mg8uofvA',
+      'Content-Type': 'application/json'
+    };
+    
+    try {
+      // Use direct fetch instead of SDK to avoid validation errors
+      console.log('[Preload] Using direct fetch to Glacier API...');
+      
+      // Use the correct URL structure based on the API documentation
+      const apiUrl = 'https://glacier-api.avax.network/v1/networks/mainnet/blockchains?pageSize=2000';
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error(`[Preload] Glacier API error response: ${responseText}`);
+        throw new Error(`Glacier API responded with status: ${response.status} - ${responseText.substring(0, 100)}`);
+      }
+      
+      const data = await response.json();
+      console.log('[Preload] Received direct response from Glacier API:', 
+        JSON.stringify(data).substring(0, 200) + '...');
+      
+      // Extract blockchains from the response
+      let blockchains = [];
+      
+      if (data.blockchains && Array.isArray(data.blockchains)) {
+        blockchains = data.blockchains;
+        console.log(`[Preload] Found ${blockchains.length} blockchains in data.blockchains`);
+      } else if (data.Result && data.Result.blockchains && Array.isArray(data.Result.blockchains)) {
+        blockchains = data.Result.blockchains;
+        console.log(`[Preload] Found ${blockchains.length} blockchains in data.Result.blockchains`);
+      } else if (Array.isArray(data)) {
+        blockchains = data;
+        console.log(`[Preload] Response itself is an array with ${blockchains.length} blockchains`);
+      } else {
+        console.error('[Preload] Could not find blockchains array in response');
+        console.log('[Preload] Response structure:', Object.keys(data));
+        
+        // If we can't find a proper structure, check all properties
+        for (const [key, value] of Object.entries(data)) {
+          if (Array.isArray(value)) {
+            console.log(`[Preload] Found array in response.${key} with ${value.length} items`);
+            if (value.length > 0 && (value[0].blockchainId || value[0].createBlockTimestamp || value[0].name)) {
+              blockchains = value;
+              console.log(`[Preload] Using ${key} as blockchains array`);
+              break;
+            }
+          } else if (typeof value === 'object' && value !== null) {
+            for (const [subKey, subValue] of Object.entries(value)) {
+              if (Array.isArray(subValue)) {
+                console.log(`[Preload] Found array in response.${key}.${subKey} with ${subValue.length} items`);
+                if (subValue.length > 0 && (subValue[0].blockchainId || subValue[0].createBlockTimestamp || subValue[0].name)) {
+                  blockchains = subValue;
+                  console.log(`[Preload] Using ${key}.${subKey} as blockchains array`);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Process and format each blockchain
+      const formattedBlockchains = blockchains.map(blockchain => {
+        // Extract creation timestamp, supporting different field names
+        const createBlockTimestamp = 
+          blockchain.createBlockTimestamp || 
+          blockchain.createTimestamp || 
+          blockchain.created ||
+          blockchain.createdAt ||
+          blockchain.timestamp;
+          
+        // Format createBlockTimestamp as a date string if available
+        let createDate = null;
+        if (createBlockTimestamp) {
+          // Convert to seconds if in milliseconds
+          const timestamp = createBlockTimestamp > 10000000000 
+            ? Math.floor(createBlockTimestamp / 1000) 
+            : createBlockTimestamp;
+            
+          createDate = new Date(timestamp * 1000);
+          
+          // Validate the date is reasonable
+          if (createDate.getFullYear() < 2010 || createDate.getFullYear() > 2050) {
+            console.warn(`[Preload] Suspicious creation date detected: ${createDate.toISOString()} from timestamp ${timestamp}`);
+            createDate = null;
+          }
+        }
+        
+        // Handle different field naming conventions
+        const evmChainId = 
+          blockchain.evmChainId || 
+          blockchain.evm_chain_id || 
+          blockchain.chainId || 
+          blockchain.chain_id;
+          
+        const blockchainName = 
+          blockchain.blockchainName || 
+          blockchain.blockchain_name || 
+          blockchain.name ||
+          blockchain.chainName;
+        
+        return {
+          ...blockchain,
+          createBlockTimestamp: createBlockTimestamp,
+          blockchainName: blockchainName,
+          // Convert evmChainId to string for consistent comparisons
+          evmChainId: evmChainId ? evmChainId.toString() : undefined,
+          // Add a formatted date string for display
+          formattedCreateDate: createDate ? formatDate(createDate) : 'N/A'
+        };
+      });
+      
+      // Filter out any blockchains without an evmChainId
+      const validBlockchains = formattedBlockchains.filter(blockchain => blockchain.evmChainId);
+      console.log(`[Preload] Filtered to ${validBlockchains.length} blockchains with valid EVMChainIDs from ${formattedBlockchains.length} total`);
+      
+      // Log complete data for debugging if we have no valid blockchains
+      if (validBlockchains.length === 0 && formattedBlockchains.length > 0) {
+        console.log('[Preload] No valid blockchains found with evmChainId. Sample data:', 
+          formattedBlockchains.slice(0, 3).map(b => JSON.stringify(b)));
+      }
+      
+      result.data = { blockchains: validBlockchains };
+      console.log(`[Preload] Received ${validBlockchains.length} blockchains from Glacier API`);
+      
+      // Log the first few blockchains for debugging
+      if (validBlockchains.length > 0) {
+        console.log('[Preload] Sample blockchain data:', 
+          validBlockchains.slice(0, 3).map(b => ({
+            name: b.blockchainName || b.blockchain_name || b.name || 'unknown',
+            evmChainId: b.evmChainId,
+            createTimestamp: b.createBlockTimestamp,
+            formattedDate: b.formattedCreateDate,
+            allKeys: Object.keys(b)
+          }))
+        );
+      }
+      
+      // Log metric to database
+      db.logApiMetric('glacierListBlockchains', validBlockchains.length);
+    } catch (apiError) {
+      console.error('[Preload] Glacier API error:', apiError);
+      result.ok = false;
+      result.status = apiError.status || 500;
+      result.error = apiError.message || 'Error fetching blockchain list from Glacier API';
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('[Preload] Glacier list blockchains error:', error);
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: error.message
+    };
+  }
+}
+
+// Helper function to format date as DD.MM.YYYY
+function formatDate(date) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
 /* Expose a minimal, safe surface to the renderer */
 contextBridge.exposeInMainWorld('avaxApi', {
   fetchMetrics,
-  fetchSupportedBlockchains
+  fetchSupportedBlockchains,
+  glacierListBlockchains
 });
 
 /* Expose metrics functions to renderer */

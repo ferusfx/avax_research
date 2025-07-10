@@ -40,6 +40,11 @@ const chainSelects = {
 // Blockchain DOM Elements
 const blockchainList = document.getElementById('blockchainList');
 const blockchainListStatus = document.getElementById('blockchainListStatus');
+const blockchainTable = document.getElementById('blockchainTable');
+
+// Sorting state for blockchain table
+let currentSortColumn = 'chainName'; // Default sort column
+let currentSortDirection = 'asc'; // Default sort direction
 
 // Filter buttons
 const filter7d = document.getElementById('filter7d');
@@ -225,6 +230,19 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
       console.error(`Chain select element not found for metric: ${metric}`);
     }
+  });
+  
+  // Add event listeners for sortable table headers
+  document.querySelectorAll('.blockchain-table th.sortable').forEach(header => {
+    header.addEventListener('click', () => {
+      const column = header.getAttribute('data-sort');
+      
+      // Toggle sort direction if clicking on the same column
+      const direction = (column === currentSortColumn && currentSortDirection === 'asc') ? 'desc' : 'asc';
+      
+      // Sort the table
+      sortBlockchainTable(column, direction);
+    });
   });
   
   // Fetch blockchain list on page load
@@ -594,9 +612,53 @@ async function fetchBlockchains() {
   blockchainList.innerHTML = ''; // Clear existing blockchain list
   
   try {
-    // Call the API exposed by preload
+    // Call the standard API exposed by preload
     const result = await window.avaxApi.fetchSupportedBlockchains();
     console.log(`Blockchain API call ${result.ok ? 'successful' : 'failed'}: ${result.status}`);
+    
+    // Also fetch the blockchains with creation dates from Glacier API
+    const glacierResult = await window.avaxApi.glacierListBlockchains();
+    console.log(`Glacier API call ${glacierResult.ok ? 'successful' : 'failed'}: ${glacierResult.status}`);
+    
+    // Create a map of blockchain creation dates by evmChainId
+    const creationDates = {};
+    if (glacierResult.ok && glacierResult.data && glacierResult.data.blockchains) {
+      console.log(`Received ${glacierResult.data.blockchains.length} blockchains from Glacier API`);
+      
+      // Debug output for the first few blockchain entries
+      if (glacierResult.data.blockchains.length > 0) {
+        console.log('First few blockchain entries:', 
+          glacierResult.data.blockchains.slice(0, 3).map(b => ({
+            id: b.evmChainId,
+            name: b.blockchainName || 'unknown',
+            date: b.formattedCreateDate,
+            hasEvmChainId: !!b.evmChainId,
+            hasDate: !!b.formattedCreateDate
+          }))
+        );
+      }
+      
+      glacierResult.data.blockchains.forEach(blockchain => {
+        if (blockchain.evmChainId && blockchain.formattedCreateDate) {
+          creationDates[blockchain.evmChainId] = blockchain.formattedCreateDate;
+        }
+      });
+      console.log(`Loaded creation dates for ${Object.keys(creationDates).length} blockchains`);
+      
+      if (Object.keys(creationDates).length > 0) {
+        console.log('Sample creation dates:', Object.entries(creationDates).slice(0, 3));
+      } else {
+        console.error('No valid creation dates were found in the API response');
+      }
+    } else {
+      console.error('Failed to load creation dates from Glacier API:', 
+        glacierResult.error || 'Unknown error');
+      
+      // If available, log the raw response for debugging
+      if (glacierResult.data) {
+        console.log('Glacier API response data:', glacierResult.data);
+      }
+    }
     
     if (!result.ok || !result.data) {
       console.error(`Blockchain API call failed: ${result.status}`);
@@ -690,6 +752,21 @@ async function fetchBlockchains() {
       evmChainIdCell.textContent = chain.evmChainId || 'N/A';
       row.appendChild(evmChainIdCell);
       
+      // Add creation date cell as the third column
+      const creationDateCell = document.createElement('td');
+      // Look up the creation date from our map of Glacier API data
+      const chainIdStr = chain.evmChainId.toString();
+      
+      if (creationDates[chainIdStr]) {
+        creationDateCell.textContent = creationDates[chainIdStr];
+        console.log(`Found creation date for chain ${chainIdStr}: ${creationDates[chainIdStr]}`);
+      } else {
+        creationDateCell.textContent = 'N/A';
+        console.log(`No creation date found for chain ${chainIdStr}`);
+      }
+      
+      row.appendChild(creationDateCell);
+      
       const blockchainIdCell = document.createElement('td');
       blockchainIdCell.textContent = chain.blockchainId || 'N/A';
       row.appendChild(blockchainIdCell);
@@ -706,12 +783,100 @@ async function fetchBlockchains() {
       blockchainList.appendChild(row);
     });
     
+    // Sort the table using the current sort column and direction
+    sortBlockchainTable(currentSortColumn, currentSortDirection);
+    
     console.log('Blockchain table and dropdowns populated successfully');
   } catch (err) {
     console.error('Blockchain API call error:', err);
     blockchainListStatus.textContent = `Error: ${err.message || 'An unexpected error occurred'}`;
     totalChainsEl.textContent = '-';
   }
+}
+
+// Sort the blockchain table based on column and direction
+function sortBlockchainTable(column, direction) {
+  const rows = Array.from(blockchainList.querySelectorAll('tr'));
+  
+  // Update the sort icons in the table headers
+  const headers = blockchainTable.querySelectorAll('th.sortable');
+  headers.forEach(header => {
+    const sortColumn = header.getAttribute('data-sort');
+    const sortIcon = header.querySelector('.sort-icon');
+    
+    if (sortColumn === column) {
+      sortIcon.textContent = direction === 'asc' ? '↑' : '↓';
+      sortIcon.className = `sort-icon ${direction}`;
+    } else {
+      sortIcon.textContent = '↕';
+      sortIcon.className = 'sort-icon';
+    }
+  });
+  
+  // Sort the rows based on the selected column and direction
+  const sortedRows = rows.sort((a, b) => {
+    const aValue = a.querySelector(`td:nth-child(${getColumnIndex(column)})`).textContent;
+    const bValue = b.querySelector(`td:nth-child(${getColumnIndex(column)})`).textContent;
+    
+    // Special handling for EVM Chain ID (numeric sort)
+    if (column === 'evmChainId') {
+      const aNum = parseInt(aValue, 10) || 0;
+      const bNum = parseInt(bValue, 10) || 0;
+      return direction === 'asc' ? aNum - bNum : bNum - aNum;
+    }
+    
+    // Special handling for creation date (if it's in a standard format)
+    if (column === 'creationDate') {
+      // If the date is in DD.MM.YYYY format, convert for proper comparison
+      // Otherwise, fall back to string comparison
+      const aDate = aValue !== 'N/A' ? parseDate(aValue) : new Date(0);
+      const bDate = bValue !== 'N/A' ? parseDate(bValue) : new Date(0);
+      
+      if (aDate && bDate) {
+        return direction === 'asc' ? aDate - bDate : bDate - aDate;
+      }
+    }
+    
+    // Default string comparison for other columns
+    return direction === 'asc' 
+      ? aValue.localeCompare(bValue)
+      : bValue.localeCompare(aValue);
+  });
+  
+  // Clear the table and append the sorted rows
+  blockchainList.innerHTML = '';
+  sortedRows.forEach(row => blockchainList.appendChild(row));
+  
+  // Update the current sort state
+  currentSortColumn = column;
+  currentSortDirection = direction;
+  
+  console.log(`Sorted blockchain table by ${column} in ${direction} order`);
+}
+
+// Helper function to parse a date string in DD.MM.YYYY format
+function parseDate(dateString) {
+  if (dateString === 'N/A') return null;
+  
+  const parts = dateString.split('.');
+  if (parts.length !== 3) return null;
+  
+  // Note: Month is 0-indexed in JavaScript Date
+  return new Date(parts[2], parts[1] - 1, parts[0]);
+}
+
+// Helper function to get the column index based on the column name
+function getColumnIndex(column) {
+  const columnMap = {
+    'chainName': 1,
+    'evmChainId': 2,
+    'creationDate': 3,
+    'blockchainId': 4,
+    'subnetId': 5, 
+    'network': 6
+  };
+  
+  return columnMap[column] || 1;
 }
 
 // Filter button event listeners

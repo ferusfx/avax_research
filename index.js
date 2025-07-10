@@ -4,7 +4,7 @@ const path = require('path');
 const createWindow = () => {
   // Create the browser window.
   const win = new BrowserWindow({
-    width: 1200,
+    width: 1600,
     height: 800,
     webPreferences: {
       nodeIntegration: true,
