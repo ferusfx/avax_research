@@ -95,7 +95,22 @@ let ctx = null; // Main chart context
 
 // Format date as DD.MM.YYYY
 function formatDate(timestamp) {
+  // Make sure timestamp is in seconds, not milliseconds
+  // More robust check for milliseconds vs seconds timestamp
+  // Unix timestamps in seconds won't exceed ~2.5 billion until year 2050
+  // Current millisecond timestamps are ~1.7 trillion
+  if (timestamp > 10000000000) { // If timestamp is in milliseconds (after 2001 in ms)
+    console.log(`Converting millisecond timestamp ${timestamp} to seconds`);
+    timestamp = Math.floor(timestamp / 1000);
+  }
+  
+  // Check if the date is valid before proceeding
   const date = new Date(timestamp * 1000);
+  if (date.toString() === 'Invalid Date' || date.getFullYear() < 2000 || date.getFullYear() > 2050) {
+    console.error(`Invalid date from timestamp ${timestamp}, using current date`);
+    return 'Invalid Date';
+  }
+  
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
@@ -190,7 +205,22 @@ document.addEventListener('DOMContentLoaded', function() {
   Object.keys(runButtons).forEach(metric => {
     if (runButtons[metric]) {
       runButtons[metric].addEventListener('click', () => {
-        fetchAndDisplayData(metric, chainSelects[metric].value);
+        // Map tabs to their specific metric types
+        let metricType;
+        switch(metric) {
+          case 'transactions':
+            metricType = 'txCount';
+            break;
+          case 'transactionFees':
+            metricType = 'feesPaid';
+            break;
+          case 'gasUsed':
+            metricType = 'gasUsed';
+            break;
+          default:
+            metricType = metric;
+        }
+        fetchAndDisplayData(metricType, chainSelects[metric].value, metric);
       });
     }
   });
@@ -212,9 +242,10 @@ document.addEventListener('DOMContentLoaded', function() {
 // Map of metrics to their display names
 const metricDisplayNames = {
   'activeAddresses': 'Active Addresses',
-  'transactions': 'Transactions',
-  'transactionFees': 'Transaction Fees',
-  'gasUsed': 'Gas Used'
+  'txCount': 'Transactions',
+  'feesPaid': 'Transaction Fees',
+  'gasUsed': 'Gas Used',
+  'transactionFees': 'Transaction Fees' // For backward compatibility
 };
 
 // Switch between tabs
@@ -241,17 +272,47 @@ function switchTab(tabId) {
       content.classList.remove('active');
     }
   });
+  
+  // If this is a metric tab, fetch and display the data
+  if (tabId !== 'overview' && metricDisplayNames[tabId]) {
+    const chainSelect = chainSelects[tabId];
+    if (chainSelect) {
+      const chainId = chainSelect.value;
+      
+      // Map tabs to their specific metric types
+      let metricType;
+      switch(tabId) {
+        case 'transactions':
+          metricType = 'txCount';
+          break;
+        case 'transactionFees':
+          metricType = 'feesPaid';
+          break;
+        case 'gasUsed':
+          metricType = 'gasUsed';
+          break;
+        default:
+          metricType = tabId;
+      }
+      
+      console.log(`Auto-loading data for ${tabId} tab with chain ID ${chainId} using metric type ${metricType}`);
+      fetchAndDisplayData(metricType, chainId, tabId);
+    }
+  }
 }
 
 // Fetch data and display chart for the selected metric and chain
-async function fetchAndDisplayData(metricType, chainId) {
-  console.log(`Fetching ${metricType} for chain ${chainId}`);
+async function fetchAndDisplayData(metricType, chainId, tabId = null) {
+  // If tabId is not provided, use metricType as the tabId (for backward compatibility)
+  const displayTabId = tabId || metricType;
+  
+  console.log(`Fetching ${metricType} for chain ${chainId} (tab: ${displayTabId})`);
   
   // Get the human-friendly metric name
   const metricDisplayName = metricDisplayNames[metricType] || 'Active Addresses';
   
   // Show loading state
-  const runBtn = runButtons[metricType];
+  const runBtn = runButtons[displayTabId];
   if (runBtn) {
     runBtn.disabled = true;
     runBtn.textContent = 'Loading...';
@@ -300,46 +361,75 @@ async function fetchAndDisplayData(metricType, chainId) {
     console.log('First data point:', {
       timestamp: results[0].timestamp,
       date: formatDate(results[0].timestamp),
+      dateObject: new Date(results[0].timestamp * 1000).toISOString(),
       value: results[0].value
     });
     console.log('Last data point:', {
       timestamp: results[results.length-1].timestamp,
       date: formatDate(results[results.length-1].timestamp),
+      dateObject: new Date(results[results.length-1].timestamp * 1000).toISOString(),
       value: results[results.length-1].value
     });
     
     // transform data → labels & dates
-    const labels = results
-      .map(r => formatDate(r.timestamp))
-      .reverse(); // API returns newest first
-    const counts = results.map(r => r.value).reverse();
+    const sortedResults = [...results].sort((a, b) => a.timestamp - b.timestamp); // Ensure chronological order
     
-    // Get actual date range from the data (results are ordered newest to oldest)
-    const actualEndDate = formatDate(results[0].timestamp);
-    const actualStartDate = formatDate(results[results.length - 1].timestamp);
+    // Validate timestamps before processing
+    const validatedResults = sortedResults.map(r => {
+      // Check if timestamp is valid (not null, undefined, or too small)
+      if (!r.timestamp || r.timestamp < 1000000000) { // Basic sanity check for timestamps (before year 2001)
+        console.warn(`Invalid timestamp found: ${r.timestamp}. Using current time instead.`);
+        r.timestamp = Math.floor(Date.now() / 1000);
+      } else if (r.timestamp > 10000000000) { // If timestamp is in milliseconds (after 2001 in ms)
+        console.log(`Converting millisecond timestamp ${r.timestamp} to seconds`);
+        r.timestamp = Math.floor(r.timestamp / 1000);
+      }
+      
+      // Verify the date is valid by checking the year
+      const testDate = new Date(r.timestamp * 1000);
+      if (testDate.getFullYear() < 2010 || testDate.getFullYear() > 2050) {
+        console.warn(`Suspicious date detected: ${testDate.toISOString()} from timestamp ${r.timestamp}`);
+        r.timestamp = Math.floor(Date.now() / 1000);
+      }
+      
+      return r;
+    });
+    
+    const labels = validatedResults.map(r => formatDate(r.timestamp));
+    const counts = validatedResults.map(r => r.value);
+    
+    // Get actual date range from the data
+    const actualStartDate = formatDate(validatedResults[0].timestamp);
+    const actualEndDate = formatDate(validatedResults[validatedResults.length - 1].timestamp);
     console.log(`Actual data range: ${actualStartDate} to ${actualEndDate}`);
     
     // Get chain name for display
-    const selectElement = chainSelects[metricType];
+    const selectElement = chainSelects[displayTabId];
     const selectedOption = selectElement ? selectElement.options[selectElement.selectedIndex] : null;
     const chainName = selectedOption ? selectedOption.text : 'Unknown Chain';
+    
+    // Create subtitle with date range and chain info
+    const subtitle = `${chainName} | ${actualStartDate} - ${actualEndDate}`;
     
     console.log(`Creating chart for ${chainName} (ID: ${chainId})`);
     
     // Get the canvas for this metric
-    const canvas = chartCanvases[metricType];
+    const canvas = chartCanvases[displayTabId];
     if (!canvas) {
-      console.error(`Canvas not found for metric: ${metricType}`);
+      console.error(`Canvas not found for tab: ${displayTabId}`);
       return;
     }
     
     // Destroy previous chart instance if exists
-    if (charts[metricType]) {
-      charts[metricType].destroy();
+    if (charts[displayTabId]) {
+      charts[displayTabId].destroy();
     }
     
     // Create new chart
-    charts[metricType] = new Chart(canvas, {
+    console.log(`Creating chart with ${labels.length} data points from ${validatedResults[0].timestamp} to ${validatedResults[validatedResults.length - 1].timestamp}`);
+    console.log(`First label: ${labels[0]}, Last label: ${labels[labels.length - 1]}`);
+    
+    charts[displayTabId] = new Chart(canvas, {
       type: 'bar',
       data: {
         labels,
@@ -347,48 +437,89 @@ async function fetchAndDisplayData(metricType, chainId) {
           {
             label: `${metricDisplayName} / day`,
             data: counts,
-            backgroundColor: 'rgba(0, 123, 255, 0.6)',
-            borderColor: 'rgba(0, 123, 255, 1)',
-            borderWidth: 1
+            backgroundColor: 'rgba(255, 0, 0, 0.7)',
+            borderColor: 'rgba(220, 0, 0, 1)',
+            borderWidth: 1,
+            borderRadius: 4,
+            hoverBackgroundColor: 'rgba(255, 0, 0, 0.9)',
           }
         ]
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: {
+              color: 'white'
+            }
+          },
+          tooltip: {
+            callbacks: {
+              title: function(tooltipItems) {
+                return tooltipItems[0].label;
+              },
+              label: function(context) {
+                let value = context.parsed.y;
+                let formattedValue = value.toLocaleString();
+                return `${metricDisplayName}: ${formattedValue}`;
+              }
+            }
+          },
+          subtitle: {
+            display: subtitle ? true : false,
+            text: subtitle || '',
+            color: 'white',
+            font: {
+              size: 14,
+              style: 'italic'
+            },
+            padding: {
+              bottom: 10
+            }
+          }
+        },
         scales: {
           y: { 
             beginAtZero: true,
             title: {
               display: true,
-              text: metricDisplayName
+              text: metricDisplayName,
+              color: 'white',
+              font: {
+                weight: 'bold'
+              }
+            },
+            ticks: {
+              color: 'white',
+              callback: function(value) {
+                if (value >= 1000000) {
+                  return (value / 1000000).toFixed(1) + 'M';
+                } else if (value >= 1000) {
+                  return (value / 1000).toFixed(1) + 'K';
+                }
+                return value;
+              }
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
             }
           },
           x: {
             title: {
               display: true,
-              text: 'Date'
-            }
-          }
-        },
-        plugins: {
-          title: {
-            display: true,
-            text: `${metricDisplayName} on ${chainName} (${actualStartDate} to ${actualEndDate})`,
-            font: {
-              size: 16
-            },
-            subtitle: {
-              display: results.length < requestedDayCount,
-              text: `Note: API returned ${results.length} of ${requestedDayCount} requested days`,
+              text: 'Date',
+              color: 'white',
               font: {
-                size: 12,
-                style: 'italic'
+                weight: 'bold'
               }
+            },
+            ticks: {
+              color: 'white'
+            },
+            grid: {
+              color: 'rgba(255, 255, 255, 0.1)'
             }
-          },
-          legend: {
-            display: true,
-            position: 'top'
           }
         }
       }
@@ -609,7 +740,23 @@ function updateActiveTabData() {
   if (activeTab !== 'overview') {
     const chainSelect = chainSelects[activeTab];
     if (chainSelect) {
-      fetchAndDisplayData(activeTab, chainSelect.value);
+      // Map tabs to their specific metric types
+      let metricType;
+      switch(activeTab) {
+        case 'transactions':
+          metricType = 'txCount';
+          break;
+        case 'transactionFees':
+          metricType = 'feesPaid';
+          break;
+        case 'gasUsed':
+          metricType = 'gasUsed';
+          break;
+        default:
+          metricType = activeTab;
+      }
+      
+      fetchAndDisplayData(metricType, chainSelect.value, activeTab);
     }
   }
 }
