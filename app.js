@@ -37,14 +37,6 @@ const chainSelects = {
   gasUsed: document.getElementById('gasUsed-chainSelect')
 };
 
-// Run buttons
-const runButtons = {
-  activeAddresses: document.getElementById('activeAddresses-runBtn'),
-  transactions: document.getElementById('transactions-runBtn'),
-  transactionFees: document.getElementById('transactionFees-runBtn'),
-  gasUsed: document.getElementById('gasUsed-runBtn')
-};
-
 // Blockchain DOM Elements
 const blockchainList = document.getElementById('blockchainList');
 const blockchainListStatus = document.getElementById('blockchainListStatus');
@@ -201,10 +193,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
   
-  // Setup run buttons
-  Object.keys(runButtons).forEach(metric => {
-    if (runButtons[metric]) {
-      runButtons[metric].addEventListener('click', () => {
+  // Setup chain selection dropdown event listeners
+  Object.keys(chainSelects).forEach(metric => {
+    if (chainSelects[metric]) {
+      chainSelects[metric].addEventListener('change', () => {
+        const selectedChainId = chainSelects[metric].value;
+        const selectedOption = chainSelects[metric].options[chainSelects[metric].selectedIndex];
+        const selectedChainName = selectedOption ? selectedOption.text : 'Unknown';
+        
+        console.log(`Chain selection changed for ${metric} tab to ${selectedChainName} (${selectedChainId})`);
+        
         // Map tabs to their specific metric types
         let metricType;
         switch(metric) {
@@ -220,8 +218,12 @@ document.addEventListener('DOMContentLoaded', function() {
           default:
             metricType = metric;
         }
-        fetchAndDisplayData(metricType, chainSelects[metric].value, metric);
+        
+        console.log(`Fetching ${metricType} data for chain ${selectedChainId}`);
+        fetchAndDisplayData(metricType, selectedChainId, metric);
       });
+    } else {
+      console.error(`Chain select element not found for metric: ${metric}`);
     }
   });
   
@@ -274,7 +276,7 @@ function switchTab(tabId) {
   });
   
   // If this is a metric tab, fetch and display the data
-  if (tabId !== 'overview' && metricDisplayNames[tabId]) {
+  if (tabId !== 'overview') {
     const chainSelect = chainSelects[tabId];
     if (chainSelect) {
       const chainId = chainSelect.value;
@@ -297,7 +299,11 @@ function switchTab(tabId) {
       
       console.log(`Auto-loading data for ${tabId} tab with chain ID ${chainId} using metric type ${metricType}`);
       fetchAndDisplayData(metricType, chainId, tabId);
+    } else {
+      console.error(`No chain select found for tab: ${tabId}`);
     }
+  } else {
+    console.log(`Tab ${tabId} is the overview tab, not loading metrics data`);
   }
 }
 
@@ -310,13 +316,7 @@ async function fetchAndDisplayData(metricType, chainId, tabId = null) {
   
   // Get the human-friendly metric name
   const metricDisplayName = metricDisplayNames[metricType] || 'Active Addresses';
-  
-  // Show loading state
-  const runBtn = runButtons[displayTabId];
-  if (runBtn) {
-    runBtn.disabled = true;
-    runBtn.textContent = 'Loading...';
-  }
+  console.log(`Using display name "${metricDisplayName}" for metric type "${metricType}" on tab "${displayTabId}"`);
   
   try {
     // Call API
@@ -333,10 +333,6 @@ async function fetchAndDisplayData(metricType, chainId, tabId = null) {
     if (!result.ok || !result.data) {
       console.error(`API call failed: ${result.status}`);
       alert(`Error fetching data: ${result.error || 'Unknown error'}`);
-      if (runBtn) {
-        runBtn.disabled = false;
-        runBtn.textContent = 'Run Query';
-      }
       return;
     }
     
@@ -346,10 +342,6 @@ async function fetchAndDisplayData(metricType, chainId, tabId = null) {
     if (results.length === 0) {
       console.error('No data received from API');
       alert('No data available for the selected parameters.');
-      if (runBtn) {
-        runBtn.disabled = false;
-        runBtn.textContent = 'Run Query';
-      }
       return;
     }
     
@@ -527,12 +519,6 @@ async function fetchAndDisplayData(metricType, chainId, tabId = null) {
   } catch (err) {
     console.error(`Error fetching ${metricType} data:`, err);
     alert(`Error: ${err.message || 'Unknown error occurred'}`);
-  } finally {
-    // Re-enable button
-    if (runBtn) {
-      runBtn.disabled = false;
-      runBtn.textContent = 'Run Query';
-    }
   }
 }
 
