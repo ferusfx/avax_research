@@ -377,14 +377,6 @@ async function fetchMetrics(startTs, endTs, metricType, chainId) {
 }
 
 /**
- * Fetch active addresses (for backward compatibility)
- */
-async function fetchActiveAddresses(startTs, endTs, chainId = '43114') {
-  console.log('[Preload] fetchActiveAddresses called, using fetchMetrics with chain ID:', chainId);
-  return fetchMetrics(startTs, endTs, 'activeAddresses', chainId);
-}
-
-/**
  * Fetch the list of supported blockchains from AvaCloud API
  */
 async function fetchSupportedBlockchains() {
@@ -486,7 +478,6 @@ async function fetchSupportedBlockchains() {
 
 /* Expose a minimal, safe surface to the renderer */
 contextBridge.exposeInMainWorld('avaxApi', {
-  fetchActiveAddresses,
   fetchMetrics,
   fetchSupportedBlockchains
 });
