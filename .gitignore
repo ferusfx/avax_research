@@ -30,3 +30,6 @@ Thumbs.db
 # SQLite database files
 data/metrics.db
 *.db
+
+# Config files with sensitive data
+config.json

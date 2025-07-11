@@ -1,7 +1,22 @@
 const { contextBridge } = require('electron');
-const db = require('./db'); // Import our database module
+const fs = require('fs');
+const path = require('path');
 let AvaCloudSDK;
 let avaCloudSDK;
+
+// Load config file with API keys
+let config = { apiKeys: { glacier: '' } };
+try {
+  const configPath = path.join(__dirname, 'config.json');
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    console.log('[Preload] Successfully loaded config file');
+  } else {
+    console.error('[Preload] Config file not found. Please create config.json based on config.example.json');
+  }
+} catch (error) {
+  console.error('[Preload] Error loading config file:', error.message);
+}
 
 // Load AvaCloud SDK
 try {
@@ -454,9 +469,6 @@ async function fetchSupportedBlockchains() {
       
       result.data = { chains: validChains };
       console.log(`[Preload] Received ${validChains.length} blockchains`);
-      
-      // Log metric to database
-      db.logApiMetric('fetchSupportedBlockchains', validChains.length);
     } catch (apiError) {
       console.error('[Preload] AvaCloud API error:', apiError);
       result.ok = false;
@@ -492,7 +504,7 @@ async function glacierListBlockchains() {
     
     // Set up headers with the API key
     const headers = {
-      'x-glacier-api-key': 'ac_iqDte1gB5XmdqdtOWEvdzfu6p8K3X09z0jNWz0EpkZ8eFUQefL-3xXHRzaQARr92ckttFTzVpIecL0Mg8uofvA',
+      'x-glacier-api-key': config.apiKeys.glacier,
       'Content-Type': 'application/json'
     };
     
@@ -635,8 +647,6 @@ async function glacierListBlockchains() {
         );
       }
       
-      // Log metric to database
-      db.logApiMetric('glacierListBlockchains', validBlockchains.length);
     } catch (apiError) {
       console.error('[Preload] Glacier API error:', apiError);
       result.ok = false;
@@ -671,9 +681,9 @@ contextBridge.exposeInMainWorld('avaxApi', {
   glacierListBlockchains
 });
 
-/* Expose metrics functions to renderer */
+/* Expose metrics functions to renderer - using placeholder functions since db.js is removed */
 contextBridge.exposeInMainWorld('metricsApi', {
-  getLatestMetric: (functionName) => db.getLatestMetric(functionName),
-  calculateChange: (functionName, days) => db.calculateChange(functionName, days),
-  getMetricsForPeriod: (functionName, days) => db.getMetricsForPeriod(functionName, days)
+  getLatestMetric: (functionName) => ({ count: 0, timestamp: Date.now() / 1000, formatted_date: formatDate(new Date()) }),
+  calculateChange: (functionName, days) => ({ current: 0, previous: 0, change: 0, percentChange: 0, currentDate: formatDate(new Date()), previousDate: formatDate(new Date()) }),
+  getMetricsForPeriod: (functionName, days) => []
 });

@@ -60,22 +60,22 @@ chainsKpiSection.innerHTML = `
   <h3>Blockchain Count Trends</h3>
   <div class="kpi-grid">
     <div class="kpi-card">
-      <div class="kpi-title">7 Day Change</div>
+      <div class="kpi-title">7 Days Ago</div>
       <div class="kpi-value" id="kpi-7d">-</div>
       <div class="kpi-change" id="kpi-7d-change">-</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-title">30 Day Change</div>
+      <div class="kpi-title">30 Days Ago</div>
       <div class="kpi-value" id="kpi-30d">-</div>
       <div class="kpi-change" id="kpi-30d-change">-</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-title">90 Day Change</div>
+      <div class="kpi-title">90 Days Ago</div>
       <div class="kpi-value" id="kpi-90d">-</div>
       <div class="kpi-change" id="kpi-90d-change">-</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-title">365 Day Change</div>
+      <div class="kpi-title">365 Days Ago</div>
       <div class="kpi-value" id="kpi-365d">-</div>
       <div class="kpi-change" id="kpi-365d-change">-</div>
     </div>
@@ -128,6 +128,14 @@ function setDateRange(days) {
   if (slider && slider.noUiSlider) {
     // Update the slider without triggering the change event
     slider.noUiSlider.set([startTimestamp, endTimestamp]);
+    
+    // Update the date display
+    updateDateDisplay();
+    
+    // Update blockchain KPIs when date range changes
+    if (activeTab === 'overview') {
+      updateBlockchainKpis();
+    }
   }
   
   updateDateDisplay();
@@ -184,6 +192,11 @@ document.addEventListener('DOMContentLoaded', function() {
       endTimestamp = parseInt(values[1]);
       console.log(`Slider updated: start=${formatDate(startTimestamp)}, end=${formatDate(endTimestamp)}`);
       updateDateDisplay();
+      
+      // Update blockchain KPIs when date range changes
+      if (activeTab === 'overview') {
+        updateBlockchainKpis();
+      }
     });
   }
   
@@ -251,9 +264,29 @@ document.addEventListener('DOMContentLoaded', function() {
   // Add KPI section to overview tab
   const overviewTab = document.getElementById('overview-tab');
   const blockchainSection = overviewTab.querySelector('.blockchain-section');
+  
   if (overviewTab && blockchainSection) {
+    // Insert the KPI section before the blockchain section
     overviewTab.insertBefore(chainsKpiSection, blockchainSection);
     console.log('Added blockchain KPI section to overview tab');
+    
+    // Verify the KPI elements are in the DOM
+    setTimeout(() => {
+      const kpiElements = [
+        'kpi-7d', 'kpi-7d-change', 
+        'kpi-30d', 'kpi-30d-change',
+        'kpi-90d', 'kpi-90d-change',
+        'kpi-365d', 'kpi-365d-change'
+      ];
+      
+      const missingElements = kpiElements.filter(id => !document.getElementById(id));
+      
+      if (missingElements.length > 0) {
+        console.error('KPI elements missing from DOM:', missingElements.join(', '));
+      } else {
+        console.log('All KPI elements successfully added to DOM');
+      }
+    }, 0);
   } else {
     console.error('Could not find overview tab or blockchain section to add KPI section');
   }
@@ -288,6 +321,11 @@ function switchTab(tabId) {
   tabContents.forEach(content => {
     if (content.id === `${tabId}-tab`) {
       content.classList.add('active');
+      
+      // If switching to overview tab, update the blockchain KPIs
+      if (tabId === 'overview') {
+        updateBlockchainKpis();
+      }
     } else {
       content.classList.remove('active');
     }
@@ -541,63 +579,260 @@ async function fetchAndDisplayData(metricType, chainId, tabId = null) {
 }
 
 // Update KPI values for blockchain trends
+async function updateKpiValues() {
+  try {
+    // Since db.js is removed, we'll just display "N/A" for all metrics
+    // In a real app, you might want to implement an alternative metrics solution
+    
+    // For all KPI elements, set to N/A
+    document.getElementById('kpi-7d').textContent = 'N/A';
+    document.getElementById('kpi-7d-change').textContent = 'N/A';
+    document.getElementById('kpi-7d-change').className = 'kpi-change neutral';
+    
+    document.getElementById('kpi-30d').textContent = 'N/A';
+    document.getElementById('kpi-30d-change').textContent = 'N/A';
+    document.getElementById('kpi-30d-change').className = 'kpi-change neutral';
+    
+    document.getElementById('kpi-90d').textContent = 'N/A';
+    document.getElementById('kpi-90d-change').textContent = 'N/A';
+    document.getElementById('kpi-90d-change').className = 'kpi-change neutral';
+    
+    document.getElementById('kpi-365d').textContent = 'N/A';
+    document.getElementById('kpi-365d-change').textContent = 'N/A';
+    document.getElementById('kpi-365d-change').className = 'kpi-change neutral';
+    
+    console.log('KPI values set to N/A (metrics database removed)');
+  } catch (error) {
+    console.error('Error updating KPI values:', error);
+  }
+}
+
+// Calculate blockchain trends based on creation timestamps
 async function updateBlockchainKpis() {
   try {
-    // Get change data for different time periods
-    const change7d = await window.metricsApi.calculateChange('fetchSupportedBlockchains', 7);
-    const change30d = await window.metricsApi.calculateChange('fetchSupportedBlockchains', 30);
-    const change90d = await window.metricsApi.calculateChange('fetchSupportedBlockchains', 90);
-    const change365d = await window.metricsApi.calculateChange('fetchSupportedBlockchains', 365);
+    console.log('Updating blockchain KPIs from table data');
     
-    // Update 7-day KPI
-    document.getElementById('kpi-7d').textContent = change7d.current;
-    const kpi7dChange = document.getElementById('kpi-7d-change');
-    if (change7d.change === 0) {
-      kpi7dChange.textContent = 'No change';
-      kpi7dChange.className = 'kpi-change neutral';
-    } else {
-      const sign = change7d.change > 0 ? '+' : '';
-      kpi7dChange.textContent = `${sign}${change7d.change} (${sign}${change7d.percentChange}%)`;
-      kpi7dChange.className = 'kpi-change ' + (change7d.change > 0 ? 'positive' : 'negative');
+    // Check if the blockchain list element exists
+    if (!blockchainList) {
+      console.error('blockchainList element is not defined!');
+      return;
     }
     
-    // Update 30-day KPI
-    document.getElementById('kpi-30d').textContent = change30d.current;
-    const kpi30dChange = document.getElementById('kpi-30d-change');
-    if (change30d.change === 0) {
-      kpi30dChange.textContent = 'No change';
-      kpi30dChange.className = 'kpi-change neutral';
-    } else {
-      const sign = change30d.change > 0 ? '+' : '';
-      kpi30dChange.textContent = `${sign}${change30d.change} (${sign}${change30d.percentChange}%)`;
-      kpi30dChange.className = 'kpi-change ' + (change30d.change > 0 ? 'positive' : 'negative');
+    console.log('blockchainList element ID:', blockchainList.id);
+    console.log('blockchainList parent:', blockchainList.parentElement?.tagName);
+    console.log('blockchainList HTML:', blockchainList.outerHTML);
+    
+    // Get all rows from the blockchain table
+    const rows = Array.from(blockchainList.querySelectorAll('tr'));
+    console.log(`Found ${rows.length} rows in the blockchain table`);
+    
+    if (rows.length === 0) {
+      console.log('No blockchain data in table yet, deferring KPI update');
+      return;
     }
     
-    // Update 90-day KPI
-    document.getElementById('kpi-90d').textContent = change90d.current;
-    const kpi90dChange = document.getElementById('kpi-90d-change');
-    if (change90d.change === 0) {
-      kpi90dChange.textContent = 'No change';
-      kpi90dChange.className = 'kpi-change neutral';
-    } else {
-      const sign = change90d.change > 0 ? '+' : '';
-      kpi90dChange.textContent = `${sign}${change90d.change} (${sign}${change90d.percentChange}%)`;
-      kpi90dChange.className = 'kpi-change ' + (change90d.change > 0 ? 'positive' : 'negative');
+    // Get the current end date from the slider
+    const currentEndDate = new Date(endTimestamp * 1000);
+    console.log(`Current end date for KPI calculations: ${currentEndDate.toISOString()}`);
+    
+    // Calculate the reference dates based on the end date
+    const date7dAgo = new Date(currentEndDate);
+    date7dAgo.setDate(currentEndDate.getDate() - 7);
+    
+    const date30dAgo = new Date(currentEndDate);
+    date30dAgo.setDate(currentEndDate.getDate() - 30);
+    
+    const date90dAgo = new Date(currentEndDate);
+    date90dAgo.setDate(currentEndDate.getDate() - 90);
+    
+    const date365dAgo = new Date(currentEndDate);
+    date365dAgo.setDate(currentEndDate.getDate() - 365);
+    
+    console.log('Reference dates for KPI calculations:', {
+      'current': currentEndDate.toISOString(),
+      '7d ago': date7dAgo.toISOString(),
+      '30d ago': date30dAgo.toISOString(),
+      '90d ago': date90dAgo.toISOString(),
+      '365d ago': date365dAgo.toISOString()
+    });
+    
+    // Helper function to parse dates from the table
+    const parseTableDate = (dateStr) => {
+      if (!dateStr || dateStr === 'N/A') return null;
+      
+      // Normalize the input by trimming whitespace
+      const normalizedDateStr = dateStr.trim();
+      
+      // Try to parse the date string using various methods
+      try {
+        // If it's already a Date object
+        if (normalizedDateStr instanceof Date) return normalizedDateStr;
+        
+        // Common formats to try (ordered by likelihood):
+        
+        // 1. Parse date in format DD.MM.YYYY
+        const dotParts = normalizedDateStr.split('.');
+        if (dotParts.length === 3) {
+          const parsedDate = new Date(dotParts[2], dotParts[1] - 1, dotParts[0]);
+          if (!isNaN(parsedDate.getTime())) {
+            return parsedDate;
+          }
+        }
+        
+        // 2. Parse date in format YYYY-MM-DD (ISO format)
+        const dashParts = normalizedDateStr.split('-');
+        if (dashParts.length === 3) {
+          const parsedDate = new Date(dashParts[0], dashParts[1] - 1, dashParts[2]);
+          if (!isNaN(parsedDate.getTime())) {
+            return parsedDate;
+          }
+        }
+        
+        // 3. Try ISO format date parsing (includes time component)
+        const isoDate = new Date(normalizedDateStr);
+        if (!isNaN(isoDate.getTime())) {
+          return isoDate;
+        }
+        
+        // 4. Try to handle numeric timestamps (seconds or milliseconds)
+        const numTimestamp = Number(normalizedDateStr);
+        if (!isNaN(numTimestamp)) {
+          // Check if it's in seconds (10 digits) or milliseconds (13 digits)
+          const timestamp = new Date(numTimestamp < 10000000000 ? numTimestamp * 1000 : numTimestamp);
+          if (!isNaN(timestamp.getTime())) {
+            return timestamp;
+          }
+        }
+        
+        console.warn(`Could not parse date string: "${normalizedDateStr}" using any known method`);
+      } catch (e) {
+        console.error(`Error parsing date: "${normalizedDateStr}"`, e);
+      }
+      
+      return null;
+    };
+    
+    // Count blockchains created before each date
+    const countBefore = (date) => {
+      let parsedCount = 0;
+      let unparsedCount = 0;
+      let noDateCount = 0;
+      
+      const count = rows.filter(row => {
+        // The creation date is in the third column (index 2)
+        const creationDateCell = row.cells[2];
+        if (!creationDateCell) {
+          noDateCount++;
+          return false;
+        }
+        
+        const creationDateStr = creationDateCell.textContent.trim();
+        
+        // If the creation date is N/A, skip this row
+        if (creationDateStr === 'N/A') {
+          noDateCount++;
+          return false;
+        }
+        
+        const creationDate = parseTableDate(creationDateStr);
+        
+        // If we couldn't parse the date, skip this row
+        if (!creationDate) {
+          unparsedCount++;
+          return false;
+        }
+        
+        parsedCount++;
+        return creationDate <= date;
+      }).length;
+      
+      // Log parse stats occasionally to help diagnose date parsing issues
+      if (date === currentEndDate) {
+        console.log(`Date parsing stats: Successfully parsed ${parsedCount} dates, failed to parse ${unparsedCount} dates, ${noDateCount} N/A or missing dates`);
+        if (unparsedCount > 0) {
+          // Sample a few rows to see what date formats we're dealing with
+          const sampleRows = rows.slice(0, Math.min(5, rows.length));
+          console.log('Sample date values from table:', sampleRows.map(row => row.cells[2]?.textContent || 'N/A'));
+        }
+      }
+      
+      return count;
+    };
+    
+    // Current total count (all blockchains in the table)
+    const currentCount = rows.length;
+    
+    // Counts at reference dates
+    const count7dAgo = countBefore(date7dAgo);
+    const count30dAgo = countBefore(date30dAgo);
+    const count90dAgo = countBefore(date90dAgo);
+    const count365dAgo = countBefore(date365dAgo);
+    
+    console.log(`KPI Counts: Current=${currentCount}, 7d ago=${count7dAgo}, 30d ago=${count30dAgo}, 90d ago=${count90dAgo}, 365d ago=${count365dAgo}`);
+    
+    // Calculate changes
+    const change7d = currentCount - count7dAgo;
+    const change30d = currentCount - count30dAgo;
+    const change90d = currentCount - count90dAgo;
+    const change365d = currentCount - count365dAgo;
+    
+    // Calculate percent changes
+    const percentChange7d = count7dAgo > 0 ? (change7d / count7dAgo) * 100 : 0;
+    const percentChange30d = count30dAgo > 0 ? (change30d / count30dAgo) * 100 : 0;
+    const percentChange90d = count90dAgo > 0 ? (change90d / count90dAgo) * 100 : 0;
+    const percentChange365d = count365dAgo > 0 ? (change365d / count365dAgo) * 100 : 0;
+    
+    console.log('Blockchain trend calculations:', {
+      currentCount,
+      '7d': { before: count7dAgo, change: change7d, percent: percentChange7d.toFixed(2) + '%' },
+      '30d': { before: count30dAgo, change: change30d, percent: percentChange30d.toFixed(2) + '%' },
+      '90d': { before: count90dAgo, change: change90d, percent: percentChange90d.toFixed(2) + '%' },
+      '365d': { before: count365dAgo, change: change365d, percent: percentChange365d.toFixed(2) + '%' }
+    });
+    
+    // Check if KPI elements exist
+    const kpiElements = {
+      '7d': document.getElementById('kpi-7d'),
+      '7d-change': document.getElementById('kpi-7d-change'),
+      '30d': document.getElementById('kpi-30d'),
+      '30d-change': document.getElementById('kpi-30d-change'),
+      '90d': document.getElementById('kpi-90d'),
+      '90d-change': document.getElementById('kpi-90d-change'),
+      '365d': document.getElementById('kpi-365d'),
+      '365d-change': document.getElementById('kpi-365d-change')
+    };
+    
+    // Check if any elements are missing
+    const missingElements = Object.entries(kpiElements)
+      .filter(([key, element]) => !element)
+      .map(([key]) => key);
+    
+    if (missingElements.length > 0) {
+      console.error('Some KPI elements are missing:', missingElements.join(', '));
+      return;
     }
     
-    // Update 365-day KPI
-    document.getElementById('kpi-365d').textContent = change365d.current;
-    const kpi365dChange = document.getElementById('kpi-365d-change');
-    if (change365d.change === 0) {
-      kpi365dChange.textContent = 'No change';
-      kpi365dChange.className = 'kpi-change neutral';
-    } else {
-      const sign = change365d.change > 0 ? '+' : '';
-      kpi365dChange.textContent = `${sign}${change365d.change} (${sign}${change365d.percentChange}%)`;
-      kpi365dChange.className = 'kpi-change ' + (change365d.change > 0 ? 'positive' : 'negative');
-    }
+    // Update the KPI elements
+    // 7-day KPI
+    kpiElements['7d'].textContent = count7dAgo;
+    kpiElements['7d-change'].textContent = `${change7d > 0 ? '+' : ''}${change7d} (${percentChange7d.toFixed(2)}%)`;
+    kpiElements['7d-change'].className = `kpi-change ${change7d > 0 ? 'positive' : change7d < 0 ? 'negative' : 'neutral'}`;
     
-    console.log('Updated blockchain KPIs successfully');
+    // 30-day KPI
+    kpiElements['30d'].textContent = count30dAgo;
+    kpiElements['30d-change'].textContent = `${change30d > 0 ? '+' : ''}${change30d} (${percentChange30d.toFixed(2)}%)`;
+    kpiElements['30d-change'].className = `kpi-change ${change30d > 0 ? 'positive' : change30d < 0 ? 'negative' : 'neutral'}`;
+    
+    // 90-day KPI
+    kpiElements['90d'].textContent = count90dAgo;
+    kpiElements['90d-change'].textContent = `${change90d > 0 ? '+' : ''}${change90d} (${percentChange90d.toFixed(2)}%)`;
+    kpiElements['90d-change'].className = `kpi-change ${change90d > 0 ? 'positive' : change90d < 0 ? 'negative' : 'neutral'}`;
+    
+    // 365-day KPI
+    kpiElements['365d'].textContent = count365dAgo;
+    kpiElements['365d-change'].textContent = `${change365d > 0 ? '+' : ''}${change365d} (${percentChange365d.toFixed(2)}%)`;
+    kpiElements['365d-change'].className = `kpi-change ${change365d > 0 ? 'positive' : change365d < 0 ? 'negative' : 'neutral'}`;
+    
   } catch (error) {
     console.error('Error updating blockchain KPIs:', error);
   }
@@ -610,6 +845,12 @@ async function fetchBlockchains() {
   // Show loading status
   blockchainListStatus.textContent = 'Fetching blockchains, please wait...';
   blockchainList.innerHTML = ''; // Clear existing blockchain list
+  
+  // Debug: Check the blockchain list element
+  console.log('blockchainList element:', blockchainList);
+  if (!blockchainList) {
+    console.error('blockchainList element not found!');
+  }
   
   try {
     // Call the standard API exposed by preload
@@ -676,9 +917,6 @@ async function fetchBlockchains() {
     if (totalChainsEl && chains) {
       totalChainsEl.textContent = chains.length;
     }
-    
-    // Update blockchain KPIs after fetching data
-    await updateBlockchainKpis();
     
     // Debug: Log the structure of the first blockchain object if available
     if (chains && chains.length > 0) {
@@ -785,6 +1023,10 @@ async function fetchBlockchains() {
     
     // Sort the table using the current sort column and direction
     sortBlockchainTable(currentSortColumn, currentSortDirection);
+    
+    // Now that the table is populated, update the blockchain KPIs
+    console.log(`Table population complete. Added ${blockchainList.querySelectorAll('tr').length} rows to the blockchain table.`);
+    await updateBlockchainKpis();
     
     console.log('Blockchain table and dropdowns populated successfully');
   } catch (err) {

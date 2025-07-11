@@ -26,12 +26,26 @@ An Electron desktop application that visualizes Avalanche C-Chain active address
    cd avax_research
    ```
 
-3. Install dependencies:
+3. Create a configuration file:
+   ```
+   cp config.example.json config.json
+   ```
+
+4. Edit the config.json file and add your Glacier API key:
+   ```json
+   {
+     "apiKeys": {
+       "glacier": "YOUR_GLACIER_API_KEY_HERE"
+     }
+   }
+   ```
+
+5. Install dependencies:
    ```
    npm install
    ```
 
-4. Start the application:
+6. Start the application:
    ```
    npm start
    ```
@@ -43,9 +57,15 @@ An Electron desktop application that visualizes Avalanche C-Chain active address
 - noUiSlider: Date range selection
 - HTML/CSS/JavaScript: Frontend development
 
-## API
+## API Keys
 
-The application uses the Avalanche network API to fetch active address metrics.
+This application requires an API key from the Glacier API. To get a key:
+
+1. Visit the Avalanche developer portal
+2. Register for an API key
+3. Add the key to your config.json file
+
+The config.json file is included in .gitignore to prevent accidentally committing your API key.
 
 ## Contributing
 
